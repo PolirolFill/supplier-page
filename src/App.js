@@ -9,7 +9,7 @@ function App() {
 
   useEffect(() => {
     if (token) {
-      axios.get('https://your-server.com/api/needs', {
+      axios.get('http://your-server-ip/api/needs', {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(response => setNeeds(response.data))
@@ -18,7 +18,7 @@ function App() {
   }, [token]);
 
   const handleLogin = () => {
-    axios.post('https://your-server.com/api/login', { email, password })
+    axios.post('http://your-server-ip/api/login', { email, password })
       .then(response => {
         setToken(response.data.token);
         localStorage.setItem('token', response.data.token);
