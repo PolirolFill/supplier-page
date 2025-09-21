@@ -203,14 +203,72 @@ function RegisterForm({ switchToLogin }) {
 }
 
 function SupplierDashboard() {
-    // Здесь будет логика кабинета после входа (список потребностей и т.д.)
-    // Для этого шага мы просто покажем, что вход выполнен.
-    // В следующих шагах мы перенесем сюда код из предыдущей версии.
+    const [needs, setNeeds] = useState([]);
+    const [proposals, setProposals] = useState(() => JSON.parse(localStorage.getItem('proposals') || '[]'));
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const fetchNeeds = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await api.get('/needs');
+            setNeeds(response.data.needs || []);
+        } catch (err) {
+            setError('Не удалось загрузить данные. Попробуйте обновить страницу.');
+            console.error('Fetch needs error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchNeeds();
+    }, [fetchNeeds]);
+
+    useEffect(() => {
+        localStorage.setItem('proposals', JSON.stringify(proposals));
+    }, [proposals]);
+
+    const addToProposal = (id) => {
+        if (!proposals.includes(id)) {
+            setProposals([...proposals, id]);
+        }
+    };
+
+    const removeFromProposal = (id) => {
+        setProposals(proposals.filter(pId => pId !== id));
+    };
+
+    const handleSubmitProposal = async () => {
+        if (proposals.length === 0) return;
+        try {
+            const response = await api.post('/proposals/submit', { request_ids: proposals });
+            if (response.data.success) {
+                alert('Ваше предложение успешно отправлено!');
+                setProposals([]);
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Не удалось отправить предложение.');
+        }
+    };
+
     return (
-        <div>
-            <h2>Рабочая область</h2>
-            <p>Здесь будет отображаться список потребностей и форма для подачи предложений.</p>
-        </div>
+        <>
+            <NeedsSection 
+                needs={needs} 
+                proposals={proposals} 
+                onAddToProposal={addToProposal} 
+                loading={loading} 
+                error={error} 
+            />
+            <ProposalSection 
+                needs={needs} 
+                proposals={proposals} 
+                onRemoveFromProposal={removeFromProposal} 
+                onSubmit={handleSubmitProposal} 
+            />
+        </>
     );
 }
 
