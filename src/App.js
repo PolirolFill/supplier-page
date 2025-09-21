@@ -5,12 +5,10 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
 // --- Глобальная настройка Axios ---
-// Создаем экземпляр axios для API
 const api = axios.create({
-    baseURL: 'https://ngb2.ru:3000/sup_post/api/public' // !!! Убедитесь, что адрес правильный
+    baseURL: 'https://ngb2.ru:3000/sup_post/api/public' // Убедитесь, что адрес и порт правильные
 });
 
-// Interceptor для добавления токена в каждый запрос
 api.interceptors.request.use(config => {
     const token = localStorage.getItem('supplierToken');
     if (token) {
@@ -19,22 +17,20 @@ api.interceptors.request.use(config => {
     return config;
 });
 
-
-// --- Главный компонент ---
+// ========================================================================
+// === ГЛАВНЫЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ =======================================
+// ========================================================================
 function App() {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(localStorage.getItem('supplierToken'));
     const [authLoading, setAuthLoading] = useState(true);
 
-    // Эффект для установки токена и пользователя при инициализации
     useEffect(() => {
         if (token) {
             try {
-                // Декодируем токен, чтобы получить данные пользователя без запроса к серверу
                 const decoded = JSON.parse(atob(token.split('.')[1]));
                 setUser(decoded);
             } catch (e) {
-                // Если токен невалидный, выходим
                 handleLogout();
             }
         }
@@ -49,6 +45,7 @@ function App() {
 
     const handleLogout = () => {
         localStorage.removeItem('supplierToken');
+        localStorage.removeItem('proposals'); // Очищаем корзину при выходе
         setToken(null);
         setUser(null);
     };
@@ -71,23 +68,75 @@ function App() {
     );
 }
 
-// --- Компоненты ---
+// ========================================================================
+// === КОМПОНЕНТЫ СТРАНИЦ ================================================
+// ========================================================================
 
-function Header({ user, onLogout }) {
+function SupplierDashboard() {
+    const [needs, setNeeds] = useState([]);
+    const [proposals, setProposals] = useState(() => JSON.parse(localStorage.getItem('proposals') || '[]'));
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const fetchNeeds = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await api.get('/needs');
+            setNeeds(response.data.needs || []);
+        } catch (err) {
+            setError('Не удалось загрузить данные. Возможно, сессия истекла, попробуйте войти заново.');
+            console.error('Fetch needs error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchNeeds();
+    }, [fetchNeeds]);
+
+    useEffect(() => {
+        localStorage.setItem('proposals', JSON.stringify(proposals));
+    }, [proposals]);
+
+    const addToProposal = (id) => {
+        if (!proposals.includes(id)) setProposals([...proposals, id]);
+    };
+
+    const removeFromProposal = (id) => {
+        setProposals(proposals.filter(pId => pId !== id));
+    };
+
+    const handleSubmitProposal = async () => {
+        if (proposals.length === 0) return;
+        try {
+            const response = await api.post('/proposals/submit', { request_ids: proposals });
+            if (response.data.success) {
+                alert('Ваше предложение успешно отправлено!');
+                setProposals([]);
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Не удалось отправить предложение.');
+        }
+    };
+
     return (
-        <header className="p-3 bg-light border-bottom">
-            <div className="container d-flex justify-content-between align-items-center">
-                <a href="/" className="h4 text-decoration-none text-primary fw-bold">Портал Поставщика</a>
-                {user && (
-                    <div>
-                        <span className="me-3">Здравствуйте, {user.name}!</span>
-                        <button className="btn btn-outline-secondary" onClick={onLogout}>
-                            <i className="bi bi-box-arrow-right me-2"></i>Выйти
-                        </button>
-                    </div>
-                )}
-            </div>
-        </header>
+        <>
+            <NeedsSection 
+                needs={needs} 
+                proposals={proposals} 
+                onAddToProposal={addToProposal} 
+                loading={loading} 
+                error={error} 
+            />
+            <ProposalSection 
+                needs={needs} 
+                proposals={proposals} 
+                onRemoveFromProposal={removeFromProposal} 
+                onSubmit={handleSubmitProposal} 
+            />
+        </>
     );
 }
 
@@ -109,6 +158,96 @@ function AuthPage({ onLoginSuccess }) {
         </div>
     );
 }
+
+// ========================================================================
+// === ОСНОВНЫЕ КОМПОНЕНТЫ ИНТЕРФЕЙСА =====================================
+// ========================================================================
+
+function Header({ user, onLogout }) {
+    return (
+        <header className="p-3 bg-light border-bottom">
+            <div className="container d-flex justify-content-between align-items-center">
+                <a href="/" className="h4 text-decoration-none text-primary fw-bold">Портал Поставщика</a>
+                {user && (
+                    <div>
+                        <span className="me-3">Здравствуйте, {user.name}!</span>
+                        <button className="btn btn-outline-secondary" onClick={onLogout}>
+                            <i className="bi bi-box-arrow-right me-2"></i>Выйти
+                        </button>
+                    </div>
+                )}
+            </div>
+        </header>
+    );
+}
+
+function NeedsSection({ needs, proposals, onAddToProposal, loading, error }) {
+    if (loading) return <div className="text-center p-5"><div className="spinner-border"></div></div>;
+    if (error) return <div className="alert alert-danger">{error}</div>;
+
+    return (
+        <div className="card mb-4">
+            <div className="card-header"><h3>Актуальные потребности</h3></div>
+            <div className="card-body">
+                <div className="table-responsive">
+                    <table className="table table-hover">
+                        <thead><tr><th>Наименование</th><th>Категория</th><th>Кол-во</th><th>Срок поставки</th><th>Действие</th></tr></thead>
+                        <tbody>
+                            {needs.length > 0 ? needs.map(need => (
+                                <tr key={need.request_id}>
+                                    <td><strong>{need.title}</strong><br/><small className="text-muted">{need.description || ''}</small></td>
+                                    <td>{need.category || 'Не указана'}</td>
+                                    <td>{need.total_quantity} {need.unit || 'шт.'}</td>
+                                    <td>{need.delivery_period || 'Не указан'}</td>
+                                    <td>
+                                        {proposals.includes(need.request_id)
+                                            ? <span className="text-success fw-bold"><i className="bi bi-check-circle-fill"></i> Добавлено</span>
+                                            : <button className="btn btn-sm btn-success" onClick={() => onAddToProposal(need.request_id)}>Добавить</button>
+                                        }
+                                    </td>
+                                </tr>
+                            )) : <tr><td colSpan="5" className="text-center text-muted">Активных потребностей нет.</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ProposalSection({ needs, proposals, onRemoveFromProposal, onSubmit }) {
+    return (
+        <div className="card mb-4">
+            <div className="card-header"><h3><i className="bi bi-basket3-fill me-2"></i>Ваше предложение</h3></div>
+            <div className="card-body">
+                {proposals.length > 0 ? (
+                    <ul className="list-group">
+                        {proposals.map(id => {
+                            const need = needs.find(n => n.request_id === id);
+                            return (
+                                <li key={id} className="list-group-item d-flex justify-content-between align-items-center">
+                                    {need ? need.title : `Потребность #${id}`}
+                                    <button className="btn btn-sm btn-danger" onClick={() => onRemoveFromProposal(id)}><i className="bi bi-trash"></i></button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                ) : (
+                    <p className="text-muted">Добавьте потребности из списка выше, чтобы сформировать предложение.</p>
+                )}
+                {proposals.length > 0 && (
+                    <button className="btn btn-primary mt-3" onClick={onSubmit}>
+                        <i className="bi bi-send me-2"></i>Отправить предложение
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ========================================================================
+// === КОМПОНЕНТЫ ФОРМ ====================================================
+// ========================================================================
 
 function LoginForm({ onLoginSuccess, switchToRegister }) {
     const [formData, setFormData] = useState({ email: '', password: '' });
@@ -198,76 +337,6 @@ function RegisterForm({ switchToLogin }) {
             <p className="mt-3 text-center">
                 Уже есть аккаунт? <button className="btn btn-link p-0" onClick={switchToLogin}>Войдите</button>
             </p>
-        </>
-    );
-}
-
-function SupplierDashboard() {
-    const [needs, setNeeds] = useState([]);
-    const [proposals, setProposals] = useState(() => JSON.parse(localStorage.getItem('proposals') || '[]'));
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    const fetchNeeds = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await api.get('/needs');
-            setNeeds(response.data.needs || []);
-        } catch (err) {
-            setError('Не удалось загрузить данные. Попробуйте обновить страницу.');
-            console.error('Fetch needs error:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchNeeds();
-    }, [fetchNeeds]);
-
-    useEffect(() => {
-        localStorage.setItem('proposals', JSON.stringify(proposals));
-    }, [proposals]);
-
-    const addToProposal = (id) => {
-        if (!proposals.includes(id)) {
-            setProposals([...proposals, id]);
-        }
-    };
-
-    const removeFromProposal = (id) => {
-        setProposals(proposals.filter(pId => pId !== id));
-    };
-
-    const handleSubmitProposal = async () => {
-        if (proposals.length === 0) return;
-        try {
-            const response = await api.post('/proposals/submit', { request_ids: proposals });
-            if (response.data.success) {
-                alert('Ваше предложение успешно отправлено!');
-                setProposals([]);
-            }
-        } catch (err) {
-            alert(err.response?.data?.message || 'Не удалось отправить предложение.');
-        }
-    };
-
-    return (
-        <>
-            <NeedsSection 
-                needs={needs} 
-                proposals={proposals} 
-                onAddToProposal={addToProposal} 
-                loading={loading} 
-                error={error} 
-            />
-            <ProposalSection 
-                needs={needs} 
-                proposals={proposals} 
-                onRemoveFromProposal={removeFromProposal} 
-                onSubmit={handleSubmitProposal} 
-            />
         </>
     );
 }
