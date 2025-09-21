@@ -21,7 +21,7 @@ const styles = {
 // --- Главный компонент ---
 function App() {
     // !!! ВАЖНО: Замените на реальный домен вашего основного сервера
-    const API_BASE_URL = 'https://ngb2.ru/sup_post/api/public';
+    const API_BASE_URL = 'https://ngb2.ru:3000/sup_post/api/public';
 
     // --- Состояние компонента ---
     const [needs, setNeeds] = useState([]);
