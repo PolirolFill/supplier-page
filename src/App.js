@@ -4,223 +4,212 @@ import axios from 'axios';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
-// --- Стили ---
-const styles = {
-    logo: {
-        fontWeight: 'bold',
-        fontSize: '1.5rem',
-        color: '#0d6efd',
-        textDecoration: 'none'
-    },
-    header: {
-        backgroundColor: '#f8f9fa',
-        borderBottom: '1px solid #dee2e6'
+// --- Глобальная настройка Axios ---
+// Создаем экземпляр axios для API
+const api = axios.create({
+    baseURL: 'https://ngb2.ru:3000/sup_post/api/public' // !!! Убедитесь, что адрес правильный
+});
+
+// Interceptor для добавления токена в каждый запрос
+api.interceptors.request.use(config => {
+    const token = localStorage.getItem('supplierToken');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
     }
-};
+    return config;
+});
+
 
 // --- Главный компонент ---
 function App() {
-    // !!! ВАЖНО: Замените на реальный домен вашего основного сервера
-    const API_BASE_URL = 'https://ngb2.ru:3000/sup_post/api/public';
+    const [user, setUser] = useState(null);
+    const [token, setToken] = useState(localStorage.getItem('supplierToken'));
+    const [authLoading, setAuthLoading] = useState(true);
 
-    // --- Состояние компонента ---
-    const [needs, setNeeds] = useState([]);
-    const [proposals, setProposals] = useState(() => {
-        try {
-            return JSON.parse(localStorage.getItem('proposals') || '[]');
-        } catch {
-            return [];
-        }
-    });
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    // --- Загрузка данных при монтировании ---
-    const fetchNeeds = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await axios.get(`${API_BASE_URL}/needs`);
-            setNeeds(response.data.needs || []);
-        } catch (err) {
-            setError('Не удалось загрузить данные. Сервер может быть недоступен.');
-            console.error('Fetch needs error:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [API_BASE_URL]);
-
+    // Эффект для установки токена и пользователя при инициализации
     useEffect(() => {
-        fetchNeeds();
-    }, [fetchNeeds]);
-
-    // --- Сохранение предложений в localStorage ---
-    useEffect(() => {
-        localStorage.setItem('proposals', JSON.stringify(proposals));
-    }, [proposals]);
-
-    // --- Обработчики событий ---
-    const addToProposal = (id) => {
-        if (!proposals.includes(id)) {
-            setProposals([...proposals, id]);
-        }
-    };
-
-    const removeFromProposal = (id) => {
-        setProposals(proposals.filter(pId => pId !== id));
-    };
-
-    const handleSubmitProposal = async () => {
-        if (proposals.length === 0) return;
-
-        const email = prompt("Для отправки предложения введите ваш регистрационный Email:");
-        if (!email) return;
-
-        try {
-            const response = await axios.post(`${API_BASE_URL}/proposals/submit`, {
-                email,
-                request_ids: proposals
-            });
-            if (response.data.success) {
-                alert('Ваше предложение успешно отправлено!');
-                setProposals([]);
+        if (token) {
+            try {
+                // Декодируем токен, чтобы получить данные пользователя без запроса к серверу
+                const decoded = JSON.parse(atob(token.split('.')[1]));
+                setUser(decoded);
+            } catch (e) {
+                // Если токен невалидный, выходим
+                handleLogout();
             }
-        } catch (err) {
-            alert(err.response?.data?.message || 'Не удалось отправить предложение. Проверьте Email.');
-            console.error('Submit proposal error:', err);
         }
+        setAuthLoading(false);
+    }, [token]);
+
+    const handleLoginSuccess = (newToken, userData) => {
+        localStorage.setItem('supplierToken', newToken);
+        setToken(newToken);
+        setUser(userData);
     };
 
-    // --- Рендеринг ---
+    const handleLogout = () => {
+        localStorage.removeItem('supplierToken');
+        setToken(null);
+        setUser(null);
+    };
+
+    if (authLoading) {
+        return <div className="vh-100 d-flex justify-content-center align-items-center"><div className="spinner-border"></div></div>;
+    }
+
     return (
         <>
-            <header className="p-3" style={styles.header}>
-                <div className="container d-flex justify-content-between align-items-center">
-                    <a href="/" style={styles.logo}>Портал Поставщика</a>
-                </div>
-            </header>
-
+            <Header user={user} onLogout={handleLogout} />
             <main className="container mt-4 pb-5">
-                {/* Вместо страницы входа/регистрации теперь единый интерфейс */}
-                <NeedsSection 
-                    needs={needs} 
-                    proposals={proposals} 
-                    onAddToProposal={addToProposal} 
-                    loading={loading} 
-                    error={error} 
-                />
-                <ProposalSection 
-                    needs={needs} 
-                    proposals={proposals} 
-                    onRemoveFromProposal={removeFromProposal} 
-                    onSubmit={handleSubmitProposal} 
-                />
-                <RegistrationSection apiUrl={API_BASE_URL} />
+                {user ? (
+                    <SupplierDashboard />
+                ) : (
+                    <AuthPage onLoginSuccess={handleLoginSuccess} />
+                )}
             </main>
         </>
     );
 }
 
-// --- Вспомогательные компоненты ---
+// --- Компоненты ---
 
-function NeedsSection({ needs, proposals, onAddToProposal, loading, error }) {
+function Header({ user, onLogout }) {
     return (
-        <div className="card mb-4">
-            <div className="card-header"><h3>Актуальные потребности</h3></div>
-            <div className="card-body">
-                {loading && <div className="text-center"><div className="spinner-border" role="status"><span className="visually-hidden">Загрузка...</span></div></div>}
-                {error && <div className="alert alert-danger">{error}</div>}
-                {!loading && !error && (
-                    <div className="table-responsive">
-                        <table className="table table-hover">
-                            <thead><tr><th>Наименование</th><th>Категория</th><th>Кол-во</th><th>Срок поставки</th><th>Действие</th></tr></thead>
-                            <tbody>
-                                {needs.map(need => (
-                                    <tr key={need.request_id}>
-                                        <td><strong>{need.title}</strong><br/><small className="text-muted">{need.description || ''}</small></td>
-                                        <td>{need.category || 'Не указана'}</td>
-                                        <td>{need.total_quantity} {need.unit || 'шт.'}</td>
-                                        <td>{need.delivery_period || 'Не указан'}</td>
-                                        <td>
-                                            {proposals.includes(need.request_id)
-                                                ? <span className="text-success fw-bold"><i className="bi bi-check-circle-fill"></i> Добавлено</span>
-                                                : <button className="btn btn-sm btn-success" onClick={() => onAddToProposal(need.request_id)}>Добавить</button>
-                                            }
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+        <header className="p-3 bg-light border-bottom">
+            <div className="container d-flex justify-content-between align-items-center">
+                <a href="/" className="h4 text-decoration-none text-primary fw-bold">Портал Поставщика</a>
+                {user && (
+                    <div>
+                        <span className="me-3">Здравствуйте, {user.name}!</span>
+                        <button className="btn btn-outline-secondary" onClick={onLogout}>
+                            <i className="bi bi-box-arrow-right me-2"></i>Выйти
+                        </button>
                     </div>
                 )}
             </div>
-        </div>
+        </header>
     );
 }
 
-function ProposalSection({ needs, proposals, onRemoveFromProposal, onSubmit }) {
+function AuthPage({ onLoginSuccess }) {
+    const [isLoginView, setIsLoginView] = useState(true);
     return (
-        <div className="card mb-4">
-            <div className="card-header"><h3><i className="bi bi-basket3-fill me-2"></i>Ваше предложение</h3></div>
-            <div className="card-body">
-                {proposals.length > 0 ? (
-                    <ul className="list-group">
-                        {proposals.map(id => {
-                            const need = needs.find(n => n.request_id === id);
-                            return (
-                                <li key={id} className="list-group-item d-flex justify-content-between align-items-center">
-                                    {need ? need.title : `Потребность #${id}`}
-                                    <button className="btn btn-sm btn-danger" onClick={() => onRemoveFromProposal(id)}><i className="bi bi-trash"></i></button>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                ) : (
-                    <p className="text-muted">Добавьте потребности из списка выше, чтобы сформировать предложение.</p>
-                )}
-                {proposals.length > 0 && (
-                    <button className="btn btn-primary mt-3" onClick={onSubmit}>
-                        <i className="bi bi-send me-2"></i>Отправить предложение
-                    </button>
-                )}
+        <div className="row justify-content-center">
+            <div className="col-md-6">
+                <div className="card shadow-sm">
+                    <div className="card-body p-4">
+                        {isLoginView ? (
+                            <LoginForm onLoginSuccess={onLoginSuccess} switchToRegister={() => setIsLoginView(false)} />
+                        ) : (
+                            <RegisterForm switchToLogin={() => setIsLoginView(true)} />
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
 
-function RegistrationSection({ apiUrl }) {
-    const [form, setForm] = useState({ name: '', inn: '', email: '' });
+function LoginForm({ onLoginSuccess, switchToRegister }) {
+    const [formData, setFormData] = useState({ email: '', password: '' });
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const handleChange = (e) => {
-        setForm({ ...form, [e.target.name]: e.target.value });
-    };
+    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async e => {
         e.preventDefault();
+        setLoading(true);
+        setError('');
         try {
-            const response = await axios.post(`${apiUrl}/suppliers/register`, form);
-            if (response.data.success) {
-                alert('Ваша заявка на регистрацию отправлена. После одобрения администратором вы получите доступ.');
-                setForm({ name: '', inn: '', email: '' });
-            }
+            const response = await api.post('/suppliers/login', formData);
+            onLoginSuccess(response.data.token, response.data.user);
         } catch (err) {
-            alert(err.response?.data?.message || 'Ошибка регистрации.');
-            console.error('Registration error:', err);
+            setError(err.response?.data?.message || 'Ошибка входа.');
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div className="card">
-            <div className="card-header"><h3>Регистрация нового поставщика</h3></div>
-            <div className="card-body">
-                <p>Если вы еще не работали с нами, пожалуйста, отправьте заявку на регистрацию.</p>
-                <form onSubmit={handleSubmit}>
-                    <div className="mb-3"><label className="form-label">Название организации</label><input type="text" name="name" value={form.name} onChange={handleChange} className="form-control" required /></div>
-                    <div className="mb-3"><label className="form-label">ИНН</label><input type="text" name="inn" value={form.inn} onChange={handleChange} className="form-control" required pattern="[0-9]{10,12}" /></div>
-                    <div className="mb-3"><label className="form-label">Email для связи</label><input type="email" name="email" value={form.email} onChange={handleChange} className="form-control" required /></div>
-                    <button type="submit" className="btn btn-info">Отправить заявку</button>
-                </form>
+        <>
+            <h2 className="text-center mb-4">Вход в кабинет</h2>
+            {error && <div className="alert alert-danger">{error}</div>}
+            <form onSubmit={handleSubmit}>
+                <div className="mb-3"><label>Email</label><input type="email" name="email" className="form-control" onChange={handleChange} required /></div>
+                <div className="mb-3"><label>Пароль</label><input type="password" name="password" className="form-control" onChange={handleChange} required /></div>
+                <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+                    {loading ? 'Вход...' : 'Войти'}
+                </button>
+            </form>
+            <p className="mt-3 text-center">
+                Нет аккаунта? <button className="btn btn-link p-0" onClick={switchToRegister}>Зарегистрируйтесь</button>
+            </p>
+        </>
+    );
+}
+
+function RegisterForm({ switchToLogin }) {
+    const [formData, setFormData] = useState({ name: '', inn: '', email: '', password: '' });
+    const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const handleSubmit = async e => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        setMessage('');
+        try {
+            const response = await api.post('/suppliers/register', formData);
+            setMessage(response.data.message);
+        } catch (err) {
+            setError(err.response?.data?.message || 'Ошибка регистрации.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (message) {
+        return (
+            <div className="text-center">
+                <h3 className="text-success">Заявка отправлена!</h3>
+                <p>{message}</p>
+                <button className="btn btn-primary" onClick={switchToLogin}>Вернуться ко входу</button>
             </div>
+        );
+    }
+
+    return (
+        <>
+            <h2 className="text-center mb-4">Регистрация</h2>
+            {error && <div className="alert alert-danger">{error}</div>}
+            <form onSubmit={handleSubmit}>
+                <div className="mb-3"><label>Название организации</label><input type="text" name="name" className="form-control" onChange={handleChange} required /></div>
+                <div className="mb-3"><label>ИНН</label><input type="text" name="inn" className="form-control" onChange={handleChange} required pattern="[0-9]{10,12}" /></div>
+                <div className="mb-3"><label>Email</label><input type="email" name="email" className="form-control" onChange={handleChange} required /></div>
+                <div className="mb-3"><label>Пароль (мин. 8 символов)</label><input type="password" name="password" className="form-control" onChange={handleChange} required minLength="8" /></div>
+                <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+                    {loading ? 'Регистрация...' : 'Зарегистрироваться'}
+                </button>
+            </form>
+            <p className="mt-3 text-center">
+                Уже есть аккаунт? <button className="btn btn-link p-0" onClick={switchToLogin}>Войдите</button>
+            </p>
+        </>
+    );
+}
+
+function SupplierDashboard() {
+    // Здесь будет логика кабинета после входа (список потребностей и т.д.)
+    // Для этого шага мы просто покажем, что вход выполнен.
+    // В следующих шагах мы перенесем сюда код из предыдущей версии.
+    return (
+        <div>
+            <h2>Рабочая область</h2>
+            <p>Здесь будет отображаться список потребностей и форма для подачи предложений.</p>
         </div>
     );
 }
