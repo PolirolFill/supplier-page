@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прототип сервиса для медицинского учреждения</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .header {
+            border-bottom: 1px solid #dee2e6;
+        }
+        .logo {
+            font-weight: bold;
+            font-size: 1.5rem;
+            color: #0d6efd;
+        }
+        .table th {
+            cursor: pointer;
+            user-select: none;
+        }
+        .table th:hover {
+            background-color: #e9ecef;
+        }
+        .sort-icon {
+            margin-left: 5px;
+            opacity: 0.5;
+        }
+        .sort-icon.active {
+            opacity: 1;
+        }
+        .action-cell-text {
+            color: #198754;
+            font-weight: 500;
+        }
+        .nav-link.active {
+            font-weight: bold;
+            color: #0d6efd !important;
+            border-bottom: 2px solid #0d6efd;
+        }
+        .form-signin {
+            max-width: 400px;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="bg-light p-3 header">
+        <div class="container d-flex justify-content-between align-items-center">
+            <a href="#" class="logo text-decoration-none">Логотип клиники</a>
+            <div id="nav-container"></div>
+        </div>
+    </header>
+
+    <main class="container mt-4" id="app-root">
+        <!-- Сюда будет рендериться контент -->
+    </main>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <!-- Application Logic -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        
+        // ========================================================================
+        // 1. MOCK DATA & DATABASE LAYER (using localStorage)
+        // ========================================================================
+        const DB = {
+            init: () => {
+                if (!localStorage.getItem('needs')) {
+                    const initialNeeds = [
+                        { id: 1, type: "Медикаменты", name: "Бинты медицинские", description: "Стерильные, 5x10 см", code: "21.20.24.131", unit: "упаковка", quantity: 100, deliveryDate: "2025-10-01", status: "Запрос КП" },
+                        { id: 2, type: "Оборудование", name: "Шприцы одноразовые", description: "5 мл, с иглой", code: "32.50.13.110", unit: "шт", quantity: 500, deliveryDate: "2025-09-30", status: "Малая закупка" },
+                        { id: 3, type: "Медикаменты", name: "Антисептик кожный", description: "Спиртовой, 1л", code: "20.20.14.000", unit: "флакон", quantity: 50, deliveryDate: "2025-08-15", status: "Аукцион" },
+                        { id: 4, type: "Расходные материалы", name: "Перчатки нитриловые", description: "Размер M, 100 шт/уп", code: "22.19.60.114", unit: "упаковка", quantity: 200, deliveryDate: "2025-09-01", status: "Запрос КП" },
+                        { id: 5, type: "Оборудование", name: "Тонометр автоматический", description: "На плечо, с адаптером", code: "32.50.13.190", unit: "шт", quantity: 10, deliveryDate: "2025-11-20", status: "Малая закупка" },
+                        { id: 6, type: "Медикаменты", name: "Парацетамол таблетки", description: "500 мг, №20", code: "21.20.10.235", unit: "упаковка", quantity: 300, deliveryDate: "2025-08-25", status: "Запрос КП" },
+                        { id: 7, type: "Расходные материалы", name: "Маски медицинские", description: "Трехслойные, 50 шт/уп", code: "32.50.50.190", unit: "упаковка", quantity: 1000, deliveryDate: "2025-07-30", status: "Аукцион" },
+                    ];
+                    localStorage.setItem('needs', JSON.stringify(initialNeeds));
+                }
+                if (!localStorage.getItem('users')) {
+                    const initialUsers = [
+                        { id: 1, login: "supplier1", email: "supplier1@example.com", password: "pass123", ip: "192.168.1.10", hostname: "host1.example.com", status: "active" },
+                        { id: 2, login: "bestmed", email: "contact@bestmed.com", password: "pass123", ip: "203.0.113.45", hostname: "mail.bestmed.com", status: "active" },
+                        { id: 3, login: "farm-postavka", email: "info@farm-postavka.ru", password: "pass123", ip: "198.51.100.12", hostname: "server.farm-postavka.ru", status: "blocked" },
+                        { id: 4, login: "techsnab", email: "manager@techsnab.org", password: "pass123", ip: "8.8.8.8", hostname: "google-public-dns-a.google.com", status: "active" },
+                    ];
+                    localStorage.setItem('users', JSON.stringify(initialUsers));
+                }
+                if (!localStorage.getItem('admin')) {
+                    localStorage.setItem('admin', JSON.stringify({ login: "admin", password: "admin123" }));
+                }
+                if (!localStorage.getItem('notifications')) {
+                    localStorage.setItem('notifications', JSON.stringify({ enabled: true, sendDaily: false, sendOnStatusChange: true, template: "Уважаемый поставщик, предоставьте цену для следующих позиций:\n[таблица]" }));
+                }
+                if (!localStorage.getItem('proposals')) {
+                    localStorage.setItem('proposals', JSON.stringify([]));
+                }
+            },
+            get: (key) => JSON.parse(localStorage.getItem(key)),
+            set: (key, data) => localStorage.setItem(key, JSON.stringify(data)),
+            getNextId: (key) => {
+                const items = DB.get(key) || [];
+                return items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+            }
+        };
+
+        // ========================================================================
+        // 2. AUTHENTICATION LAYER
+        // ========================================================================
+        const Auth = {
+            login: (userType, token) => localStorage.setItem(`${userType}Token`, token),
+            logout: () => {
+                localStorage.removeItem('supplierToken');
+                localStorage.removeItem('adminToken');
+                App.route();
+            },
+            isLoggedIn: (userType) => !!localStorage.getItem(`${userType}Token`),
+            getCurrentUser: () => {
+                const token = localStorage.getItem('supplierToken');
+                if (!token) return null;
+                try {
+                    return JSON.parse(atob(token.split('.')[1]));
+                } catch (e) {
+                    return null;
+                }
+            }
+        };
+
+        // ========================================================================
+        // 3. APPLICATION STATE
+        // ========================================================================
+        const State = {
+            needs: {
+                filters: { type: '', status: '', search: '' },
+                sort: { column: 'id', direction: 'asc' },
+                currentPage: 1,
+                itemsPerPage: 10,
+            },
+            users: {
+                filters: { status: '', search: '' },
+                sort: { column: 'id', direction: 'asc' },
+            }
+        };
+
+        // ========================================================================
+        // 4. UTILS & HELPERS
+        // ========================================================================
+        const Utils = {
+            getIpInfo: async () => {
+                try {
+                    const response = await fetch('https://ipapi.co/json/');
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const data = await response.json();
+                    console.log('IP Info:', { ip: data.ip, hostname: data.hostname || 'N/A' });
+                    return { ip: data.ip, hostname: data.hostname || 'N/A' };
+                } catch (error) {
+                    console.error('Failed to fetch IP info:', error);
+                    return { ip: 'N/A', hostname: 'N/A' };
+                }
+            },
+            showModal: (title, body, footer = '') => {
+                // Remove any existing modals
+                const existingModal = document.getElementById('appModal');
+                if (existingModal) existingModal.remove();
+                
+                const modalHTML = `
+                    <div class="modal fade" id="appModal" tabindex="-1">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">${title}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">${body}</div>
+                                ${footer ? `<div class="modal-footer">${footer}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHTML);
+                const modalEl = document.getElementById('appModal');
+                const modal = new bootstrap.Modal(modalEl);
+                modalEl.addEventListener('hidden.bs.modal', () => modalEl.remove());
+                modal.show();
+                return modal;
+            },
+            renderSortIcon: (columnName, stateObject) => {
+                if (stateObject.sort.column === columnName) {
+                    return `<span class="sort-icon active">${stateObject.sort.direction === 'asc' ? '▲' : '▼'}</span>`;
+                }
+                return `<span class="sort-icon">▲</span>`;
+            },
+            applySorting: (data, sort) => {
+                return [...data].sort((a, b) => {
+                    const valA = a[sort.column];
+                    const valB = b[sort.column];
+                    if (valA < valB) return sort.direction === 'asc' ? -1 : 1;
+                    if (valA > valB) return sort.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+        };
+
+        // ========================================================================
+        // 5. VIEW RENDERING LAYER
+        // ========================================================================
+        const Views = {
+            // --- Common ---
+            renderHeader: () => {
+                const navContainer = document.getElementById('nav-container');
+                if (Auth.isLoggedIn('admin')) {
+                    const hash = window.location.hash;
+                    navContainer.innerHTML = `
+                        <ul class="nav nav-pills">
+                            <li class="nav-item"><a href="#/admin" class="nav-link ${hash === '#/admin' || hash === '#/admin/needs' ? 'active' : ''}">Потребности</a></li>
+                            <li class="nav-item"><a href="#/admin/users" class="nav-link ${hash === '#/admin/users' ? 'active' : ''}">Пользователи</a></li>
+                            <li class="nav-item"><a href="#/admin/statistics" class="nav-link ${hash === '#/admin/statistics' ? 'active' : ''}">Статистика</a></li>
+                            <li class="nav-item"><a href="#/admin/notifications" class="nav-link ${hash === '#/admin/notifications' ? 'active' : ''}">Уведомления</a></li>
+                            <li class="nav-item"><button class="btn btn-outline-primary ms-3" id="logout-btn">Выйти</button></li>
+                        </ul>
+                    `;
+                } else if (Auth.isLoggedIn('supplier')) {
+                    navContainer.innerHTML = `<button class="btn btn-outline-primary" id="logout-btn">Выйти</button>`;
+                } else {
+                    navContainer.innerHTML = `<a href="#/admin-login" class="btn btn-sm btn-outline-secondary">Вход для администратора</a>`;
+                }
+                const logoutBtn = document.getElementById('logout-btn');
+                if (logoutBtn) logoutBtn.addEventListener('click', Auth.logout);
+            },
+
+            // --- Supplier Views ---
+            renderSupplierRegister: () => {
+                const appRoot = document.getElementById('app-root');
+                appRoot.innerHTML = `
+                    <div class="row justify-content-center">
+                        <div class="col-md-6 col-lg-5">
+                            <div class="card">
+                                <div class="card-body p-4">
+                                    <h1 class="card-title text-center mb-4">Регистрация поставщика</h1>
+                                    <form id="registerForm">
+                                        <input type="hidden" id="ip-info" name="ip-info">
+                                        <div class="mb-3">
+                                            <label for="login" class="form-label">Логин</label>
+                                            <input type="text" id="login" class="form-control" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="email" class="form-label">Email</label>
+                                            <input type="email" id="email" class="form-control" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="confirmEmail" class="form-label">Подтвердите email</label>
+                                            <input type="email" id="confirmEmail" class="form-control" required>
+                                            <div class="invalid-feedback">Адреса email не совпадают.</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="password" class="form-label">Пароль</label>
+                                            <input type="password" id="password" class="form-control" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                Utils.getIpInfo().then(info => {
+                    document.getElementById('ip-info').value = JSON.stringify(info);
+                });
+
+                const form = document.getElementById('registerForm');
+                form.addEventListener('submit', e => {
+                    e.preventDefault();
+                    const login = form.querySelector('#login').value;
+                    const email = form.querySelector('#email').value;
+                    const confirmEmail = form.querySelector('#confirmEmail').value;
+                    const password = form.querySelector('#password').value;
+                    const ipInfo = JSON.parse(form.querySelector('#ip-info').value);
+
+                    if (email !== confirmEmail) {
+                        form.querySelector('#confirmEmail').classList.add('is-invalid');
+                        return;
+                    }
+                    form.querySelector('#confirmEmail').classList.remove('is-invalid');
+
+                    const users = DB.get('users');
+                    const newUser = {
+                        id: DB.getNextId('users'),
+                        login, email, password,
+                        ip: ipInfo.ip,
+                        hostname: ipInfo.hostname,
+                        status: 'active'
+                    };
+                    users.push(newUser);
+                    DB.set('users', users);
+
+                    // Имитация JWT
+                    const mockToken = `mock-header.${btoa(JSON.stringify({id: newUser.id, login: newUser.login}))}.mock-signature`;
+                    Auth.login('supplier', mockToken);
+                    
+                    console.log('Имитация отправки письма: Подтверждение отправлено на email', email);
+                    Utils.showModal('Регистрация успешна', `Подтверждение отправлено на email: <strong>${email}</strong>`);
+                    
+                    App.route();
+                });
+            },
+
+            renderSupplierNeeds: () => {
+                const appRoot = document.getElementById('app-root');
+                const needs = DB.get('needs');
+                const proposals = DB.get('proposals');
+                const currentUser = Auth.getCurrentUser();
+                const userProposals = proposals.filter(p => p.userId === currentUser.id).map(p => p.needId);
+
+                // Apply filters
+                let filteredNeeds = needs.filter(need => {
+                    const typeMatch = State.needs.filters.type ? need.type === State.needs.filters.type : true;
+                    const statusMatch = State.needs.filters.status ? need.status === State.needs.filters.status : true;
+                    const searchMatch = State.needs.filters.search ? 
+                        (need.name.toLowerCase().includes(State.needs.filters.search.toLowerCase()) || 
+                         need.code.toLowerCase().includes(State.needs.filters.search.toLowerCase())) : true;
+                    return typeMatch && statusMatch && searchMatch;
+                });
+
+                // Apply sorting
+                filteredNeeds = Utils.applySorting(filteredNeeds, State.needs.sort);
+
+                // Apply pagination
+                const totalPages = Math.ceil(filteredNeeds.length / State.needs.itemsPerPage);
+                const paginatedNeeds = filteredNeeds.slice(
+                    (State.needs.currentPage - 1) * State.needs.itemsPerPage,
+                    State.needs.currentPage * State.needs.itemsPerPage
+                );
+
+                const uniqueTypes = [...new Set(needs.map(n => n.type))];
+                const uniqueStatuses = [...new Set(needs.map(n => n.status))];
+
+                appRoot.innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Потребности учреждения</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 mb-3 align-items-center">
+                                <div class="col-md-3">
+                                    <select class="form-select" id="typeFilter">
+                                        <option value="">Все типы</option>
+                                        ${uniqueTypes.map(t => `<option value="${t}" ${State.needs.filters.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-select" id="statusFilter">
+                                        <option value="">Все статусы</option>
+                                        ${uniqueStatuses.map(s => `<option value="${s}" ${State.needs.filters.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <input type="text" class="form-control" id="search" placeholder="Поиск по наименованию или коду..." value="${State.needs.filters.search}">
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th data-sort="type">Тип ${Utils.renderSortIcon('type', State.needs)}</th>
+                                            <th data-sort="name">Наименование ${Utils.renderSortIcon('name', State.needs)}</th>
+                                            <th>Характеристики</th>
+                                            <th data-sort="code">Код ОКПД2/КТРУ ${Utils.renderSortIcon('code', State.needs)}</th>
+                                            <th data-sort="unit">Ед. изм. ${Utils.renderSortIcon('unit', State.needs)}</th>
+                                            <th data-sort="quantity">Кол-во ${Utils.renderSortIcon('quantity', State.needs)}</th>
+                                            <th data-sort="deliveryDate">Срок поставки ${Utils.renderSortIcon('deliveryDate', State.needs)}</th>
+                                            <th data-sort="status">Статус ${Utils.renderSortIcon('status', State.needs)}</th>
+                                            <th>Действие</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="needsTableBody">
+                                        ${paginatedNeeds.map(need => `
+                                            <tr>
+                                                <td>${need.type}</td>
+                                                <td>${need.name}</td>
+                                                <td>${need.description}</td>
+                                                <td>${need.code}</td>
+                                                <td>${need.unit}</td>
+                                                <td>${need.quantity}</td>
+                                                <td>${need.deliveryDate}</td>
+                                                <td>${need.status}</td>
+                                                <td class="action-cell" data-need-id="${need.id}">
+                                                    ${userProposals.includes(need.id) ? `
+                                                        <span class="action-cell-text">✅ В перечне на предложение</span>
+                                                        <button class="btn btn-sm btn-secondary ms-2 undo-proposal-btn" data-id="${need.id}">Отменить</button>
+                                                    ` : `
+                                                        <button class="btn btn-sm btn-success propose-btn" data-id="${need.id}">Направить предложение</button>
+                                                    `}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <nav>
+                                <ul class="pagination justify-content-center">
+                                    ${Array.from({ length: totalPages }, (_, i) => `
+                                        <li class="page-item ${State.needs.currentPage === i + 1 ? 'active' : ''}">
+                                            <a class="page-link" href="#" data-page="${i + 1}">${i + 1}</a>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h3>На предложение</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Наименование</th>
+                                            <th>Кол-во</th>
+                                            <th>Срок поставки</th>
+                                            <th>Действие</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="proposalTableBody">
+                                        ${needs.filter(n => userProposals.includes(n.id)).map(need => `
+                                            <tr>
+                                                <td>${need.name}</td>
+                                                <td>${need.quantity} ${need.unit}</td>
+                                                <td>${need.deliveryDate}</td>
+                                                <td><button class="btn btn-sm btn-danger remove-proposal-btn" data-id="${need.id}">Удалить</button></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            ${userProposals.length > 0 ? `
+                                <button class="btn btn-danger" id="clearProposalBtn">Очистить все</button>
+                                <button class="btn btn-primary" id="submitProposalBtn">Отправить в работу</button>
+                            ` : '<p>Вы еще не добавили ни одной позиции.</p>'}
+                        </div>
+                    </div>
+                `;
+
+                // Event Listeners
+                document.getElementById('typeFilter').addEventListener('change', e => { State.needs.filters.type = e.target.value; State.needs.currentPage = 1; Views.renderSupplierNeeds(); });
+                document.getElementById('statusFilter').addEventListener('change', e => { State.needs.filters.status = e.target.value; State.needs.currentPage = 1; Views.renderSupplierNeeds(); });
+                document.getElementById('search').addEventListener('input', e => { State.needs.filters.search = e.target.value; State.needs.currentPage = 1; Views.renderSupplierNeeds(); });
+
+                document.querySelectorAll('th[data-sort]').forEach(th => {
+                    th.addEventListener('click', () => {
+                        const column = th.dataset.sort;
+                        if (State.needs.sort.column === column) {
+                            State.needs.sort.direction = State.needs.sort.direction === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            State.needs.sort.column = column;
+                            State.needs.sort.direction = 'asc';
+                        }
+                        Views.renderSupplierNeeds();
+                    });
+                });
+
+                document.querySelectorAll('.page-link').forEach(link => {
+                    link.addEventListener('click', e => {
+                        e.preventDefault();
+                        State.needs.currentPage = parseInt(e.target.dataset.page);
+                        Views.renderSupplierNeeds();
+                    });
+                });
+
+                appRoot.addEventListener('click', e => {
+                    const target = e.target;
+                    const needId = parseInt(target.dataset.id);
+                    const proposals = DB.get('proposals');
+                    const currentUser = Auth.getCurrentUser();
+
+                    if (target.classList.contains('propose-btn') || target.classList.contains('undo-proposal-btn') || target.classList.contains('remove-proposal-btn')) {
+                        const existingIndex = proposals.findIndex(p => p.userId === currentUser.id && p.needId === needId);
+                        if (existingIndex > -1) {
+                            proposals.splice(existingIndex, 1);
+                        } else {
+                            proposals.push({ userId: currentUser.id, needId: needId });
+                        }
+                        DB.set('proposals', proposals);
+                        Views.renderSupplierNeeds();
+                    }
+
+                    if (target.id === 'clearProposalBtn') {
+                        const remainingProposals = proposals.filter(p => p.userId !== currentUser.id);
+                        DB.set('proposals', remainingProposals);
+                        Views.renderSupplierNeeds();
+                    }
+
+                    if (target.id === 'submitProposalBtn') {
+                        const userProposalIds = proposals.filter(p => p.userId === currentUser.id).map(p => p.needId);
+                        const proposalNeeds = DB.get('needs').filter(n => userProposalIds.includes(n.id));
+                        
+                        const emailBody = {
+                            message: "Отправлено письмо с таблицей позиций и инструкцией: 'Ответьте с ценами в течение 3 дней'",
+                            data: proposalNeeds
+                        };
+                        console.log(emailBody);
+                        Utils.showModal('Предложение отправлено', 'Ваше предложение было успешно отправлено в медицинское учреждение.');
+
+                        // Сохраняем "в работе"
+                        let inWork = DB.get('inWork') || [];
+                        inWork.push({ userId: currentUser.id, needs: userProposalIds, date: new Date().toISOString() });
+                        DB.set('inWork', inWork);
+
+                        // Очищаем текущие предложения
+                        const remainingProposals = proposals.filter(p => p.userId !== currentUser.id);
+                        DB.set('proposals', remainingProposals);
+                        Views.renderSupplierNeeds();
+                    }
+                });
+            },
+
+            // --- Admin Views ---
+            renderAdminLogin: () => {
+                const appRoot = document.getElementById('app-root');
+                appRoot.innerHTML = `
+                    <div class="d-flex justify-content-center align-items-center" style="min-height: 60vh;">
+                        <form id="adminLoginForm" class="form-signin card p-4">
+                            <h1 class="h3 mb-3 fw-normal text-center">Вход для администратора</h1>
+                            <div class="form-floating mb-2">
+                                <input type="text" class="form-control" id="adminLogin" placeholder="Логин" required>
+                                <label for="adminLogin">Логин</label>
+                            </div>
+                            <div class="form-floating mb-3">
+                                <input type="password" class="form-control" id="adminPassword" placeholder="Пароль" required>
+                                <label for="adminPassword">Пароль</label>
+                            </div>
+                            <div id="login-error" class="alert alert-danger" style="display: none;"></div>
+                            <button class="w-100 btn btn-lg btn-primary" type="submit">Войти</button>
+                        </form>
+                    </div>
+                `;
+
+                document.getElementById('adminLoginForm').addEventListener('submit', e => {
+                    e.preventDefault();
+                    const login = document.getElementById('adminLogin').value;
+                    const pass = document.getElementById('adminPassword').value;
+                    const adminCreds = DB.get('admin');
+                    const errorDiv = document.getElementById('login-error');
+
+                    if (login === adminCreds.login && pass === adminCreds.password) {
+                        Auth.login('admin', 'mock-admin-jwt-token');
+                        window.location.hash = '/admin';
+                    } else {
+                        errorDiv.textContent = 'Неверный логин или пароль.';
+                        errorDiv.style.display = 'block';
+                    }
+                });
+            },
+
+            renderAdminNeeds: () => {
+                const appRoot = document.getElementById('app-root');
+                const needs = DB.get('needs');
+                appRoot.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2>Управление потребностями</h2>
+                        <div>
+                            <button class="btn btn-success" id="addNeedBtn">Добавить потребность</button>
+                            <button class="btn btn-info" id="importBtn">Импорт</button>
+                            <button class="btn btn-primary" id="applyChangesBtn">Применить изменения и уведомить</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th><th>Тип</th><th>Наименование</th><th>Код</th><th>Кол-во</th><th>Срок</th><th>Статус</th><th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${needs.map(n => `
+                                    <tr>
+                                        <td>${n.id}</td>
+                                        <td>${n.type}</td>
+                                        <td>${n.name}</td>
+                                        <td>${n.code}</td>
+                                        <td>${n.quantity} ${n.unit}</td>
+                                        <td>${n.deliveryDate}</td>
+                                        <td>${n.status}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-warning edit-need-btn" data-id="${n.id}">Ред.</button>
+                                            <button class="btn btn-sm btn-danger delete-need-btn" data-id="${n.id}">Удл.</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                const renderNeedModal = (need = null) => {
+                    const isEditing = need !== null;
+                    const title = isEditing ? 'Редактировать потребность' : 'Добавить потребность';
+                    const modalBody = `
+                        <form id="needForm">
+                            <input type="hidden" name="id" value="${isEditing ? need.id : ''}">
+                            <div class="mb-2">
+                                <label class="form-label">Тип товара</label>
+                                <select name="type" class="form-select" required>
+                                    <option value="Медикаменты" ${isEditing && need.type === 'Медикаменты' ? 'selected' : ''}>Медикаменты</option>
+                                    <option value="Оборудование" ${isEditing && need.type === 'Оборудование' ? 'selected' : ''}>Оборудование</option>
+                                    <option value="Расходные материалы" ${isEditing && need.type === 'Расходные материалы' ? 'selected' : ''}>Расходные материалы</option>
+                                </select>
+                            </div>
+                            <div class="mb-2"><label class="form-label">Наименование</label><input type="text" name="name" class="form-control" value="${isEditing ? need.name : ''}" required></div>
+                            <div class="mb-2"><label class="form-label">Характеристики</label><textarea name="description" class="form-control">${isEditing ? need.description : ''}</textarea></div>
+                            <div class="mb-2"><label class="form-label">Код ОКПД2/КТРУ</label><input type="text" name="code" class="form-control" value="${isEditing ? need.code : ''}" required></div>
+                            <div class="row">
+                                <div class="col"><label class="form-label">Ед. изм.</label><select name="unit" class="form-select"><option>шт</option><option>упаковка</option><option>флакон</option></select></div>
+                                <div class="col"><label class="form-label">Количество</label><input type="number" name="quantity" class="form-control" value="${isEditing ? need.quantity : ''}" required></div>
+                            </div>
+                            <div class="mb-2"><label class="form-label">Срок поставки</label><input type="date" name="deliveryDate" class="form-control" value="${isEditing ? need.deliveryDate : ''}" required></div>
+                            <div class="mb-2">
+                                <label class="form-label">Статус</label>
+                                <select name="status" class="form-select" required>
+                                    <option value="Запрос КП" ${isEditing && need.status === 'Запрос КП' ? 'selected' : ''}>Запрос КП</option>
+                                    <option value="Малая закупка" ${isEditing && need.status === 'Малая закупка' ? 'selected' : ''}>Малая закупка</option>
+                                    <option value="Аукцион" ${isEditing && need.status === 'Аукцион' ? 'selected' : ''}>Аукцион</option>
+                                </select>
+                            </div>
+                        </form>
+                    `;
+                    const modalFooter = `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button><button type="button" class="btn btn-primary" id="saveNeedBtn">Сохранить</button>`;
+                    const modal = Utils.showModal(title, modalBody, modalFooter);
+
+                    document.getElementById('saveNeedBtn').addEventListener('click', () => {
+                        const form = document.getElementById('needForm');
+                        const formData = new FormData(form);
+                        const needData = Object.fromEntries(formData.entries());
+                        needData.id = parseInt(needData.id);
+                        needData.quantity = parseInt(needData.quantity);
+                        
+                        let needs = DB.get('needs');
+                        if (isEditing) {
+                            const oldNeed = needs.find(n => n.id === needData.id);
+                            if (oldNeed.status !== needData.status) {
+                                // Имитация уведомления об изменении статуса
+                                console.log(`Уведомление: Статус позиции "${needData.name}" изменён с "${oldNeed.status}" на "${needData.status}".`);
+                            }
+                            needs = needs.map(n => n.id === needData.id ? needData : n);
+                        } else {
+                            needData.id = DB.getNextId('needs');
+                            needs.push(needData);
+                        }
+                        DB.set('needs', needs);
+                        modal.hide();
+                        Views.renderAdminNeeds();
+                    });
+                };
+
+                document.getElementById('addNeedBtn').addEventListener('click', () => renderNeedModal());
+                
+                appRoot.addEventListener('click', e => {
+                    if (e.target.classList.contains('edit-need-btn')) {
+                        const needId = parseInt(e.target.dataset.id);
+                        const need = DB.get('needs').find(n => n.id === needId);
+                        renderNeedModal(need);
+                    }
+                    if (e.target.classList.contains('delete-need-btn')) {
+                        const needId = parseInt(e.target.dataset.id);
+                        if (confirm('Вы уверены, что хотите удалить эту потребность?')) {
+                            let needs = DB.get('needs');
+                            needs = needs.filter(n => n.id !== needId);
+                            DB.set('needs', needs);
+                            Views.renderAdminNeeds();
+                        }
+                    }
+                });
+
+                document.getElementById('importBtn').addEventListener('click', () => {
+                    const modalBody = `<input type="file" class="form-control" id="importFile" accept=".csv,.xlsx,.xls,.doc">`;
+                    const modal = Utils.showModal('Импорт данных', modalBody);
+                    // Имитация
+                    setTimeout(() => {
+                        const importedCount = 3;
+                        console.log(`Имитация импорта: Импортировано ${importedCount} записей.`);
+                        Utils.showModal('Импорт завершен', `Импортировано ${importedCount} записей.`);
+                        // Добавляем моковые данные
+                        let needs = DB.get('needs');
+                        needs.push({ id: DB.getNextId('needs'), type: "Медикаменты", name: "Импорт-1", description: "...", code: "111", unit: "шт", quantity: 10, deliveryDate: "2025-12-01", status: "Запрос КП" });
+                        needs.push({ id: DB.getNextId('needs'), type: "Оборудование", name: "Импорт-2", description: "...", code: "222", unit: "шт", quantity: 20, deliveryDate: "2025-12-02", status: "Малая закупка" });
+                        needs.push({ id: DB.getNextId('needs'), type: "Расходные материалы", name: "Импорт-3", description: "...", code: "333", unit: "шт", quantity: 30, deliveryDate: "2025-12-03", status: "Аукцион" });
+                        DB.set('needs', needs);
+                        modal.hide();
+                        Views.renderAdminNeeds();
+                    }, 1500);
+                });
+
+                document.getElementById('applyChangesBtn').addEventListener('click', () => {
+                    console.log('Триггер уведомлений для поставщиков...');
+                    Utils.showModal('Уведомления отправлены', 'Уведомления об изменениях были отправлены всем релевантным поставщикам.');
+                });
+            },
+
+            renderAdminUsers: () => {
+                const appRoot = document.getElementById('app-root');
+                let users = DB.get('users');
+
+                // Apply filters
+                let filteredUsers = users.filter(user => {
+                    const statusMatch = State.users.filters.status ? user.status === State.users.filters.status : true;
+                    const searchMatch = State.users.filters.search ?
+                        (user.login.toLowerCase().includes(State.users.filters.search.toLowerCase()) ||
+                         user.email.toLowerCase().includes(State.users.filters.search.toLowerCase())) : true;
+                    return statusMatch && searchMatch;
+                });
+
+                // Apply sorting
+                filteredUsers = Utils.applySorting(filteredUsers, State.users.sort);
+
+                appRoot.innerHTML = `
+                    <h2>Управление пользователями</h2>
+                    <div class="row g-3 mb-3 align-items-center">
+                        <div class="col-md-4">
+                            <select class="form-select" id="userStatusFilter">
+                                <option value="">Все статусы</option>
+                                <option value="active" ${State.users.filters.status === 'active' ? 'selected' : ''}>Активен</option>
+                                <option value="blocked" ${State.users.filters.status === 'blocked' ? 'selected' : ''}>Заблокирован</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" id="userSearch" placeholder="Поиск по логину или email..." value="${State.users.filters.search}">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th data-sort="login">Логин ${Utils.renderSortIcon('login', State.users)}</th>
+                                    <th data-sort="email">Email ${Utils.renderSortIcon('email', State.users)}</th>
+                                    <th>IP</th>
+                                    <th>Хост</th>
+                                    <th data-sort="status">Статус ${Utils.renderSortIcon('status', State.users)}</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filteredUsers.map(u => `
+                                    <tr>
+                                        <td>${u.login}</td>
+                                        <td>${u.email}</td>
+                                        <td>${u.ip}</td>
+                                        <td>${u.hostname}</td>
+                                        <td><span class="badge bg-${u.status === 'active' ? 'success' : 'danger'}">${u.status === 'active' ? 'Активен' : 'Заблокирован'}</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-warning edit-user-btn" data-id="${u.id}">Ред.</button>
+                                            <button class="btn btn-sm btn-secondary toggle-block-btn" data-id="${u.id}">${u.status === 'active' ? 'Блок.' : 'Разб.'}</button>
+                                            <button class="btn btn-sm btn-danger delete-user-btn" data-id="${u.id}">Удл.</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                // Event Listeners
+                document.getElementById('userStatusFilter').addEventListener('change', e => { State.users.filters.status = e.target.value; Views.renderAdminUsers(); });
+                document.getElementById('userSearch').addEventListener('input', e => { State.users.filters.search = e.target.value; Views.renderAdminUsers(); });
+                
+                document.querySelectorAll('th[data-sort]').forEach(th => {
+                    th.addEventListener('click', () => {
+                        const column = th.dataset.sort;
+                        if (State.users.sort.column === column) {
+                            State.users.sort.direction = State.users.sort.direction === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            State.users.sort.column = column;
+                            State.users.sort.direction = 'asc';
+                        }
+                        Views.renderAdminUsers();
+                    });
+                });
+
+                appRoot.addEventListener('click', e => {
+                    const userId = parseInt(e.target.dataset.id);
+                    if (!userId) return;
+
+                    let users = DB.get('users');
+                    
+                    if (e.target.classList.contains('toggle-block-btn')) {
+                        users = users.map(u => u.id === userId ? { ...u, status: u.status === 'active' ? 'blocked' : 'active' } : u);
+                        DB.set('users', users);
+                        Views.renderAdminUsers();
+                    }
+                    if (e.target.classList.contains('delete-user-btn')) {
+                        if (confirm('Вы уверены, что хотите удалить этого пользователя?')) {
+                            users = users.filter(u => u.id !== userId);
+                            DB.set('users', users);
+                            Views.renderAdminUsers();
+                        }
+                    }
+                    if (e.target.classList.contains('edit-user-btn')) {
+                        const user = users.find(u => u.id === userId);
+                        const modalBody = `
+                            <form id="userEditForm">
+                                <div class="mb-2"><label class="form-label">Логин</label><input type="text" id="editLogin" class="form-control" value="${user.login}"></div>
+                                <div class="mb-2"><label class="form-label">Email</label><input type="email" id="editEmail" class="form-control" value="${user.email}"></div>
+                            </form>
+                        `;
+                        const modalFooter = `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button><button type="button" class="btn btn-primary" id="saveUserBtn">Сохранить</button>`;
+                        const modal = Utils.showModal('Редактировать пользователя', modalBody, modalFooter);
+                        
+                        document.getElementById('saveUserBtn').addEventListener('click', () => {
+                            const newLogin = document.getElementById('editLogin').value;
+                            const newEmail = document.getElementById('editEmail').value;
+                            users = users.map(u => u.id === userId ? { ...u, login: newLogin, email: newEmail } : u);
+                            DB.set('users', users);
+                            modal.hide();
+                            Views.renderAdminUsers();
+                        });
+                    }
+                });
+            },
+
+            renderAdminStatistics: () => {
+                const appRoot = document.getElementById('app-root');
+                // Моковые данные для статистики
+                const stats = {
+                    users: DB.get('users').length,
+                    views: 50, // мок
+                    proposals: 20 // мок
+                };
+                const needs = DB.get('needs');
+                const statusCounts = needs.reduce((acc, need) => {
+                    acc[need.status] = (acc[need.status] || 0) + 1;
+                    return acc;
+                }, {});
+
+                appRoot.innerHTML = `
+                    <h2>Статистика</h2>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card text-white bg-primary mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">Зарегистрировано поставщиков</h5>
+                                    <p class="card-text fs-2">${stats.users}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-white bg-info mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">Просмотры позиций</h5>
+                                    <p class="card-text fs-2">${stats.views}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card text-white bg-success mb-3">
+                                <div class="card-body">
+                                    <h5 class="card-title">Отправлено предложений</h5>
+                                    <p class="card-text fs-2">${stats.proposals}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">Количество предложений по статусам</div>
+                        <div class="card-body">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                const ctx = document.getElementById('statusChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: Object.keys(statusCounts),
+                        datasets: [{
+                            label: 'Количество потребностей',
+                            data: Object.values(statusCounts),
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.5)',
+                                'rgba(54, 162, 235, 0.5)',
+                                'rgba(255, 206, 86, 0.5)',
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)',
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)',
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: { beginAtZero: true }
+                        },
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            },
+
+            renderAdminNotifications: () => {
+                const appRoot = document.getElementById('app-root');
+                const settings = DB.get('notifications');
+                appRoot.innerHTML = `
+                    <h2>Управление уведомлениями</h2>
+                    <div class="card">
+                        <div class="card-body">
+                            <form id="notificationsForm">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enabled" ${settings.enabled ? 'checked' : ''}>
+                                    <label class="form-check-label" for="enabled">Включить уведомления</label>
+                                </div>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="sendDaily" ${settings.sendDaily ? 'checked' : ''}>
+                                    <label class="form-check-label" for="sendDaily">Отправлять ежедневно</label>
+                                </div>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="sendOnStatusChange" ${settings.sendOnStatusChange ? 'checked' : ''}>
+                                    <label class="form-check-label" for="sendOnStatusChange">Отправлять при изменении статуса</label>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="template" class="form-label">Шаблон письма</label>
+                                    <textarea class="form-control" id="template" rows="5">${settings.template}</textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Сохранить настройки</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('notificationsForm').addEventListener('submit', e => {
+                    e.preventDefault();
+                    const newSettings = {
+                        enabled: document.getElementById('enabled').checked,
+                        sendDaily: document.getElementById('sendDaily').checked,
+                        sendOnStatusChange: document.getElementById('sendOnStatusChange').checked,
+                        template: document.getElementById('template').value
+                    };
+                    DB.set('notifications', newSettings);
+                    console.log('Настройки уведомлений сохранены:', newSettings);
+                    Utils.showModal('Успех', 'Настройки уведомлений успешно сохранены.');
+                });
+            },
+        };
+
+        // ========================================================================
+        // 6. ROUTER & APP INITIALIZATION
+        // ========================================================================
+        const App = {
+            route: () => {
+                const hash = window.location.hash || '#/';
+                Views.renderHeader();
+                
+                if (Auth.isLoggedIn('admin')) {
+                    if (hash.startsWith('#/admin/users')) Views.renderAdminUsers();
+                    else if (hash.startsWith('#/admin/statistics')) Views.renderAdminStatistics();
+                    else if (hash.startsWith('#/admin/notifications')) Views.renderAdminNotifications();
+                    else Views.renderAdminNeeds(); // Default admin page
+                } else if (hash.startsWith('#/admin-login')) {
+                    Views.renderAdminLogin();
+                } else {
+                    // Supplier flow
+                    if (Auth.isLoggedIn('supplier')) {
+                        Views.renderSupplierNeeds();
+                    } else {
+                        Views.renderSupplierRegister();
+                    }
+                }
+            },
+            init: () => {
+                DB.init();
+                window.addEventListener('hashchange', App.route);
+                App.route();
+            }
+        };
+
+        App.init();
+    });
+    </script>
+
+</body>
+</html>
